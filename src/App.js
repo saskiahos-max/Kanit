@@ -110,7 +110,15 @@ function odaSearchUrl(name) {
 
 function useLocalStorage(key, def) {
   const [val, setVal] = useState(() => {
-    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
+    try {
+      const v = localStorage.getItem(key);
+      if (!v) return def;
+      const parsed = JSON.parse(v);
+      if (key === "kanit_items" && Array.isArray(parsed)) {
+        return parsed.map(i => ({ ...i, category: i.category === "Drinks" ? "Soda" : i.category }));
+      }
+      return parsed;
+    } catch { return def; }
   });
   useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
   return [val, setVal];
