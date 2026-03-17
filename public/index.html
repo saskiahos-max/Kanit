@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kanit</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f9f8f6;
+        color: #1a1a1a;
+        --color-background-primary: #ffffff;
+        --color-background-secondary: #f3f2ee;
+        --color-background-tertiary: #f9f8f6;
+        --color-text-primary: #1a1a1a;
+        --color-text-secondary: #6b6a64;
+        --color-text-tertiary: #9c9a92;
+        --color-border-tertiary: rgba(0,0,0,0.1);
+        --color-border-secondary: rgba(0,0,0,0.18);
+        --color-border-primary: rgba(0,0,0,0.28);
+        --border-radius-md: 8px;
+        --border-radius-lg: 12px;
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #1a1a18;
+          color: #e8e6de;
+          --color-background-primary: #242422;
+          --color-background-secondary: #2e2e2b;
+          --color-background-tertiary: #1a1a18;
+          --color-text-primary: #e8e6de;
+          --color-text-secondary: #9c9a92;
+          --color-text-tertiary: #6b6a64;
+          --color-border-tertiary: rgba(255,255,255,0.08);
+          --color-border-secondary: rgba(255,255,255,0.15);
+          --color-border-primary: rgba(255,255,255,0.25);
+        }
+      }
+      #root {
+        max-width: 900px;
+        margin: 0 auto;
+        background: var(--color-background-primary);
+        min-height: 100vh;
+        border-left: 0.5px solid var(--color-border-tertiary);
+        border-right: 0.5px solid var(--color-border-tertiary);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
