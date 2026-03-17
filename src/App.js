@@ -493,11 +493,7 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [items] = useLocalStorage("kanit_items", INV_DEFAULT);
 
-  return (
-    <>
-      {page === "home"      && <HomePage onNav={p => setPage(p === "reorder" ? "inventory-reorder" : p)} items={items} />}
-      {(page === "inventory" || page === "inventory-reorder") && <InventoryPage onBack={() => setPage("home")} startTab={page === "inventory-reorder" ? "Reorder" : "Soda"} />}
-      {page === "vendors"   && <VendorsPage onBack={() => setPage("home")} />}
-    </>
-  );
+  if (page === "vendors") return <VendorsPage onBack={() => setPage("home")} />;
+  if (page === "inventory" || page === "inventory-reorder") return <InventoryPage onBack={() => setPage("home")} startTab={page === "inventory-reorder" ? "Reorder" : "Soda"} />;
+  return <HomePage onNav={p => setPage(p === "reorder" ? "inventory-reorder" : p)} items={items} />;
 }
