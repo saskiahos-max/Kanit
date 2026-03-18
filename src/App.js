@@ -486,8 +486,8 @@ function InventoryPage({ onBack, startTab }) {
       <div style={{ display:"flex", gap:8, padding:"12px 1.5rem 0" }}>
         {[["Soda",CORAL],["Beer",AMBER],["Reorder",RED]].map(([k,color])=>(
           <button key={k} onClick={()=>setTab(k)}
-            style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, padding:"6px 0", fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:k==="Reorder"?"6px 14px":"6px 0", whiteSpace:"nowrap", fontFamily:font }}>
-            {k==="Reorder"?"Reorder"+(reorderItems.length>0?" ("+reorderItems.length+")"):"":k}
+            style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:k==="Reorder"?"6px 14px":"6px 0", whiteSpace:"nowrap", fontFamily:font }}>
+            {k==="Reorder"?"Reorder"+(reorderItems.length>0?" ("+reorderItems.length+")":""):k}
           </button>
         ))}
       </div>
