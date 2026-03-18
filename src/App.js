@@ -447,7 +447,7 @@ function InventoryPage({ onBack, startTab }) {
     setItems(p => p.map(i => i.id === id ? { ...i, qty: newQty } : i));
   }, [setItems]);
 
-  const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab, qty:"", unit:"cans", min:"", odaUrl:"" }); setModal("add"); };
+  const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab==="Snacks"?"Snacks":tab, qty:"", unit:"cans", min:"", odaUrl:"" }); setModal("add"); };
   const openEdit = item => { setForm({...item}); setModal({type:"edit", item}); };
   const openAdj  = item => { setAdjDelta(""); setModal({type:"adj", item}); };
   const close    = () => setModal(null);
@@ -484,7 +484,7 @@ function InventoryPage({ onBack, startTab }) {
       />
 
       <div style={{ display:"flex", gap:8, padding:"12px 1.5rem 0" }}>
-        {[["Soda",CORAL],["Beer",AMBER],["Reorder",RED]].map(([k,color])=>(
+        {[["Soda",CORAL],["Beer",AMBER],["Snacks",MINT],["Reorder",RED]].map(([k,color])=>(
           <button key={k} onClick={()=>setTab(k)}
             style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:k==="Reorder"?"6px 14px":"6px 0", whiteSpace:"nowrap", fontFamily:font }}>
             {k==="Reorder"?"Reorder"+(reorderItems.length>0?" ("+reorderItems.length+")":""):k}
