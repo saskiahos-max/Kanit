@@ -171,19 +171,34 @@ function useVoice(onResult) {
   const [listening, setListening] = useState(false);
   const recRef = useRef(null);
   const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
-  const start = useCallback(() => {
+
+  const toggle = useCallback(() => {
+    if (listening) {
+      recRef.current?.stop();
+      setListening(false);
+      return;
+    }
     if (!supported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SR();
-    rec.lang = "en-US"; rec.continuous = false; rec.interimResults = false;
+    rec.lang = "en-US";
+    rec.continuous = false;
+    rec.interimResults = false;
     rec.onstart = () => setListening(true);
     rec.onend   = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    rec.onresult = e => { const t = e.results[0][0].transcript; onResult(t); };
-    recRef.current = rec; rec.start();
-  }, [supported, onResult]);
-  const stop = useCallback(() => { recRef.current?.stop(); setListening(false); }, []);
-  return { listening, start, stop, supported };
+    rec.onerror = (e) => { setListening(false); };
+    rec.onresult = (e) => {
+      const results = e.results;
+      if (results && results.length > 0 && results[0].length > 0) {
+        const t = results[0][0].transcript;
+        if (t) onResult(t);
+      }
+    };
+    recRef.current = rec;
+    try { rec.start(); } catch(e) { setListening(false); }
+  }, [listening, supported, onResult]);
+
+  return { listening, toggle, supported };
 }
 
 function Toast({ msg, onDone }) {
@@ -207,13 +222,13 @@ function MicButton({ items, onUpdate }) {
     const opLabel = cmd.op === "set" ? "set to" : cmd.op === "plus" ? "+" : "-";
     setToast(`${cmd.item.name} ${opLabel} ${Math.abs(cmd.delta ?? cmd.num)} → ${newQty}`);
   }, [items, onUpdate]);
-  const { listening, start, stop, supported } = useVoice(handleResult);
+  const { listening, toggle, supported } = useVoice(handleResult);
   if (!supported) return null;
   return (
     <>
-      <button onMouseDown={start} onMouseUp={stop}
-        onTouchStart={e=>{e.preventDefault();start();}} onTouchEnd={e=>{e.preventDefault();stop();}}
-        style={{ width:44, height:44, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+      <button onClick={toggle}
+        style={{ width:44, height:44, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, position:"relative" }}
+        title={listening?"Tap to stop":"Tap to speak"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
           <rect x="9" y="2" width="6" height="11" rx="3"/>
           <path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
@@ -246,7 +261,7 @@ function ItemCard({ item, onAdj, onEdit }) {
         <button onClick={() => onAdj(item)} style={{ background:"var(--color-background-secondary)", border:"2px solid var(--color-border-tertiary)", borderRadius:10, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--color-text-secondary)", fontFamily:font }}>±</button>
         <button onClick={() => onEdit(item)} style={{ background:"var(--color-background-secondary)", border:"2px solid var(--color-border-tertiary)", borderRadius:10, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--color-text-secondary)", fontFamily:font }}>✎</button>
       </div>
-      {st !== "OK" && <>
+      {st !== "OK" && (item.category === "Soda" || item.category === "Beer") && <>
         <div style={{ height:1, background:"var(--color-border-tertiary)" }}/>
         <a href={url} target="_blank" rel="noreferrer"
           style={{ display:"block", width:"100%", background:odaBg, color:odaTxt, border:"none", padding:"8px 0", fontSize:12, fontWeight:600, textAlign:"center", textDecoration:"none", fontFamily:font, boxSizing:"border-box" }}>
@@ -284,7 +299,7 @@ function StockCountPage({ items, onSave, onClose }) {
     } else { setToast("? Didn't catch a number"); }
   }, [current, advance]);
 
-  const { listening, start, stop, supported } = useVoice(handleVoiceResult);
+  const { listening, toggle, supported } = useVoice(handleVoiceResult);
   const skip = () => { setInput(""); if (idx < all.length - 1) setIdx(i => i + 1); else setDone(true); };
   const finish = () => { onSave(items.map(i => counts[i.id] !== undefined ? { ...i, qty: counts[i.id] } : i)); onClose(); };
   const progress = Math.round((idx / all.length) * 100);
@@ -331,7 +346,7 @@ function StockCountPage({ items, onSave, onClose }) {
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
           <button onClick={skip} style={{ flex:1, background:"transparent", color:"var(--color-text-secondary)", border:"2px solid var(--color-border-secondary)", borderRadius:14, padding:"12px", fontSize:14, cursor:"pointer", fontFamily:font }}>Skip</button>
           {supported && (
-            <button onMouseDown={start} onMouseUp={stop} onTouchStart={e=>{e.preventDefault();start();}} onTouchEnd={e=>{e.preventDefault();stop();}}
+            <button onClick={toggle}
               style={{ width:52, height:52, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
                 <rect x="9" y="2" width="6" height="11" rx="3"/>
