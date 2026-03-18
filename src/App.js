@@ -19,7 +19,34 @@ function useLocalStorage(key, def) {
     } catch { return def; }
   });
   useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
-  return [val, setVal];
+  return [val, setVal  { id:29, name:"Coffee beans Pals Nordic Light 1kg",          category:"Hot drinks", qty:0, unit:"box of 6",  min:2, odaUrl:"" },
+  { id:30, name:"Espresso beans Meglio Espresso 1kg",          category:"Hot drinks", qty:0, unit:"box of 6",  min:2, odaUrl:"" },
+  { id:31, name:"Baristea English Blend 25pos",                category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:32, name:"Baristea Earl Grey 25pos",                    category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:33, name:"Baristea Forest Fruit 25pos",                 category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:34, name:"Baristea Chai 25pos",                         category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:35, name:"Baristea Vanilla 25pos",                      category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:36, name:"Baristea Green Tea 25pos",                    category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:37, name:"Baristea Green Tea Lemon 25pos",              category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:38, name:"Baristea Jasmin 25pos",                       category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:39, name:"Baristea White Tea Raspberry 25pos",          category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:40, name:"Baristea Rooibos 25pos (koffeinfri)",         category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:41, name:"Baristea Mint 25pos (koffeinfri)",            category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:42, name:"Baristea Ginger Lemon 25pos (koffeinfri)",    category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:43, name:"Baristea Camomile 25pos (koffeinfri)",        category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:44, name:"Baristea Fruit Infusion 25pos",               category:"Hot drinks", qty:0, unit:"box",       min:4, odaUrl:"" },
+  { id:45, name:"Scandinavian Taste Chocomix 10x1kg",          category:"Hot drinks", qty:0, unit:"box",       min:1, odaUrl:"" },
+  { id:46, name:"Melitta Multi TF Rensetabletter 150stk",      category:"Hot drinks", qty:0, unit:"box",       min:1, odaUrl:"" },
+  { id:47, name:"Melitta AMC Milk System Cleaner 50x50g",      category:"Hot drinks", qty:0, unit:"box",       min:1, odaUrl:"" },
+  { id:48, name:"Melitta Kurvfilter Pa SF 202S 100stk",        category:"Hot drinks", qty:0, unit:"box",       min:1, odaUrl:"" },
+  { id:49, name:"CO2 Engangsflaske 6x600g",                    category:"Hot drinks", qty:0, unit:"box",       min:1, odaUrl:"" },
+  { id:50, name:"Jura Rensetabletter 25x3,5g",                 category:"Hot drinks", qty:0, unit:"box",       min:1, odaUrl:"" },
+  { id:51, name:"Sirup Chai 1L",                               category:"Hot drinks", qty:0, unit:"bottle",    min:1, odaUrl:"" },
+  { id:52, name:"Sirup Hasselnøtt 1L",                         category:"Hot drinks", qty:0, unit:"bottle",    min:1, odaUrl:"" },
+  { id:53, name:"Sirup Karamell 1L",                           category:"Hot drinks", qty:0, unit:"bottle",    min:1, odaUrl:"" },
+  { id:54, name:"Sirup Mango Iste 1L",                         category:"Hot drinks", qty:0, unit:"bottle",    min:1, odaUrl:"" },
+  { id:55, name:"Royal Mix Saltet Nøtteblanding 2,5kg",        category:"Hot drinks", qty:0, unit:"box",       min:2, odaUrl:"" },
+];
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -434,7 +461,7 @@ function InventoryPage({ onBack, startTab }) {
   const [modal, setModal] = useState(null);
   const [form, setForm]   = useState({});
   const [adjDelta, setAdjDelta] = useState("");
-  const [nextId, setNextId] = useLocalStorage("kanit_next_id", 29);
+  const [nextId, setNextId] = useLocalStorage("kanit_next_id", 56);
   const [stockCount, setStockCount] = useState(false);
 
   const reorderItems = items.filter(i => invStatus(i.qty, i.min) !== "OK");
@@ -447,7 +474,7 @@ function InventoryPage({ onBack, startTab }) {
     setItems(p => p.map(i => i.id === id ? { ...i, qty: newQty } : i));
   }, [setItems]);
 
-  const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab==="Snacks"?"Snacks":tab, qty:"", unit:"cans", min:"", odaUrl:"" }); setModal("add"); };
+  const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab, qty:"", unit:"cans", min:"", odaUrl:"" }); setModal("add"); };
   const openEdit = item => { setForm({...item}); setModal({type:"edit", item}); };
   const openAdj  = item => { setAdjDelta(""); setModal({type:"adj", item}); };
   const close    = () => setModal(null);
@@ -484,7 +511,7 @@ function InventoryPage({ onBack, startTab }) {
       />
 
       <div style={{ display:"flex", gap:8, padding:"12px 1.5rem 0" }}>
-        {[["Soda",CORAL],["Beer",AMBER],["Snacks",MINT],["Reorder",RED]].map(([k,color])=>(
+        {[["Soda",CORAL],["Beer",AMBER],["Snacks",MINT],["Hot drinks","#7F77DD"],["Reorder",RED]].map(([k,color])=>(
           <button key={k} onClick={()=>setTab(k)}
             style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:k==="Reorder"?"6px 14px":"6px 0", whiteSpace:"nowrap", fontFamily:font }}>
             {k==="Reorder"?"Reorder"+(reorderItems.length>0?" ("+reorderItems.length+")":""):k}
@@ -528,7 +555,7 @@ function InventoryPage({ onBack, startTab }) {
             <input style={inp} value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Coca Cola"/>
             <label style={{ display:"block", fontSize:12, color:"var(--color-text-secondary)", marginBottom:4, fontFamily:font }}>Category</label>
             <select style={inp} value={form.category} onChange={e=>setForm(p=>({...p,category:e.target.value}))}>
-              {["Soda","Beer","Snacks","Dairy","Other"].map(c=><option key={c}>{c}</option>)}
+              {["Soda","Beer","Snacks","Hot drinks","Dairy","Other"].map(c=><option key={c}>{c}</option>)}
             </select>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
               <div><label style={{ display:"block", fontSize:12, color:"var(--color-text-secondary)", marginBottom:4, fontFamily:font }}>Quantity</label><input style={{...inp,marginBottom:0}} type="number" min="0" value={form.qty} onChange={e=>setForm(p=>({...p,qty:e.target.value}))} placeholder="0"/></div>
@@ -700,6 +727,7 @@ function HomePage({ onNav, items }) {
         </div>
       )}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+
         <button onClick={()=>onNav("inventory")} style={{ background:CORAL, borderRadius:20, padding:"1.5rem 1rem", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
           <span style={{ fontSize:28 }}>🥤</span>
           <span style={{ fontSize:17, fontWeight:600, color:"#fff", fontFamily:font }}>Inventory</span>
