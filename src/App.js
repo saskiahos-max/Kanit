@@ -747,10 +747,36 @@ function HomePage({ onNav, items }) {
 export default function App() {
   const [page, setPage] = useState("home");
   const [items] = useLocalStorage("kanit_items", INV_DEFAULT);
+  const [showReset, setShowReset] = useState(false);
+
+  const handleReset = () => {
+    localStorage.removeItem('kanit_items');
+    localStorage.removeItem('kanit_next_id');
+    window.location.reload();
+  };
+
   const handleNav = p => setPage(p==="reorder"?"inventory-reorder":p);
   if (page==="inventory"||page==="inventory-reorder")
     return <InventoryPage onBack={()=>setPage("home")} startTab={page==="inventory-reorder"?"Reorder":"Soda"}/>;
   if (page==="vendors")
     return <VendorsPage onBack={()=>setPage("home")}/>;
-  return <HomePage onNav={handleNav} items={items}/>;
+  return (
+    <>
+      <HomePage onNav={handleNav} items={items}/>
+      <div style={{ textAlign:"center", padding:"1rem", fontFamily:font }}>
+        <button onClick={()=>setShowReset(v=>!v)} style={{ background:"none", border:"none", fontSize:11, color:"var(--color-text-tertiary)", cursor:"pointer", fontFamily:font }}>
+          ···
+        </button>
+        {showReset && (
+          <div style={{ marginTop:8, background:"var(--color-background-secondary)", borderRadius:12, padding:"1rem", border:"2px solid var(--color-border-tertiary)" }}>
+            <p style={{ margin:"0 0 10px", fontSize:12, color:"var(--color-text-secondary)", fontFamily:font }}>Reset item list to latest defaults? Your quantities will be lost.</p>
+            <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
+              <button onClick={()=>setShowReset(false)} style={{ border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"6px 14px", fontSize:12, cursor:"pointer", background:"transparent", fontFamily:font }}>Cancel</button>
+              <button onClick={handleReset} style={{ border:"none", borderRadius:10, padding:"6px 14px", fontSize:12, cursor:"pointer", background:RED, color:"#fff", fontWeight:600, fontFamily:font }}>Reset items</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
