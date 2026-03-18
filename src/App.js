@@ -1,11 +1,24 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 
-const CORAL = "#D85A30";
-const AMBER = "#EF9F27";
-const MINT  = "#5DCAA5";
-const RED   = "#E24B4A";
-const PURPLE= "#7F77DD";
-const font  = "'Poppins', sans-serif";
+const CORAL  = "#D85A30";
+const AMBER  = "#EF9F27";
+const MINT   = "#5DCAA5";
+const RED    = "#E24B4A";
+const PURPLE = "#7F77DD";
+const font   = "'Poppins', sans-serif";
+
+// ── Smart localStorage with migration ─────────────────────────────────────
+// Merges saved data with defaults: new items get added, existing quantities kept
+function mergeWithDefaults(saved, defaults) {
+  if (!Array.isArray(saved)) return defaults;
+  const savedMap = {};
+  saved.forEach(i => { savedMap[i.id] = i; });
+  return defaults.map(def => {
+    const s = savedMap[def.id];
+    if (!s) return def; // new item not in saved data — use default
+    return { ...def, qty: s.qty, unit: s.unit ?? def.unit }; // keep saved qty, use latest defaults for everything else
+  });
+}
 
 function useLocalStorage(key, def) {
   const [val, setVal] = useState(() => {
@@ -13,8 +26,10 @@ function useLocalStorage(key, def) {
       const v = localStorage.getItem(key);
       if (!v) return def;
       const parsed = JSON.parse(v);
-      if (key === "kanit_items" && Array.isArray(parsed))
-        return parsed.map(i => ({ ...i, category: i.category === "Drinks" ? "Soda" : i.category }));
+      if (key === "kanit_items" && Array.isArray(parsed)) {
+        const migrated = parsed.map(i => ({ ...i, category: i.category === "Drinks" ? "Soda" : i.category }));
+        return mergeWithDefaults(migrated, def);
+      }
       return parsed;
     } catch { return def; }
   });
@@ -22,6 +37,7 @@ function useLocalStorage(key, def) {
   return [val, setVal];
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────
 function invStatus(qty, min) {
   if (qty <= 0) return "Critical";
   if (qty <= min) return "Low";
@@ -30,7 +46,6 @@ function invStatus(qty, min) {
 function odaSearchUrl(name) {
   return "https://oda.com/no/products/?search=" + encodeURIComponent(name);
 }
-
 function parseVoiceCommand(transcript, items) {
   const t = transcript.toLowerCase().trim();
   let bestItem = null, bestScore = 0;
@@ -42,7 +57,7 @@ function parseVoiceCommand(transcript, items) {
       const words = name.split(/\s+/);
       const matched = words.filter(w => t.includes(w)).length;
       const score = matched / words.length;
-      if (score > 0.5 && score > bestScore / 20) { bestScore = score * 10; bestItem = item; }
+      if (score > 0.5 && score * 10 > bestScore) { bestScore = score * 10; bestItem = item; }
     }
   }
   if (!bestItem) return null;
@@ -60,6 +75,7 @@ function parseVoiceCommand(transcript, items) {
   return { item: bestItem, op, delta, num };
 }
 
+// ── Data ───────────────────────────────────────────────────────────────────
 const INV_DEFAULT = [
   { id:1,  name:"Coca Cola",                             category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64771-coca-cola-coca-cola-original-taste-4-x-033l/" },
   { id:2,  name:"Coca Cola Zero",                        category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64772-coca-cola-coca-cola-zero-sugar-4-x-033l/" },
@@ -124,6 +140,7 @@ const VENDOR_DEFAULT = [
   { id:3, name:"TechFix Norge", category:"IT", contact:"Bjørn Haugen", phone:"+47 90 12 34 56", email:"support@techfixnorge.no", notes:"On-call IT support. SLA 4 hours." },
 ];
 
+// ── UI primitives ──────────────────────────────────────────────────────────
 function Modal({ onClose, children }) {
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -160,34 +177,24 @@ function TopBar({ title, onBack, right }) {
   );
 }
 
-function inp() {
-  return { height:40, border:"2px solid var(--color-border-secondary)", borderRadius:12, padding:"0 12px", fontSize:14, background:"var(--color-background-primary)", color:"var(--color-text-primary)", boxSizing:"border-box", marginBottom:14, width:"100%", fontFamily:font };
-}
-function pbtn(primary) {
-  return { border:`2px solid ${primary?"transparent":"var(--color-border-secondary)"}`, borderRadius:12, padding:"8px 18px", fontSize:14, cursor:"pointer", background:primary?CORAL:"transparent", color:primary?"#fff":"var(--color-text-primary)", fontWeight:primary?600:400, fontFamily:font };
-}
+function inp() { return { height:40, border:"2px solid var(--color-border-secondary)", borderRadius:12, padding:"0 12px", fontSize:14, background:"var(--color-background-primary)", color:"var(--color-text-primary)", boxSizing:"border-box", marginBottom:14, width:"100%", fontFamily:font }; }
+function pbtn(primary) { return { border:`2px solid ${primary?"transparent":"var(--color-border-secondary)"}`, borderRadius:12, padding:"8px 18px", fontSize:14, cursor:"pointer", background:primary?CORAL:"transparent", color:primary?"#fff":"var(--color-text-primary)", fontWeight:primary?600:400, fontFamily:font }; }
 
+// ── Voice ──────────────────────────────────────────────────────────────────
 function useVoice(onResult) {
   const [listening, setListening] = useState(false);
   const recRef = useRef(null);
   const supported = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
-
   const toggle = useCallback(() => {
-    if (listening) {
-      recRef.current?.stop();
-      setListening(false);
-      return;
-    }
+    if (listening) { recRef.current?.stop(); setListening(false); return; }
     if (!supported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SR();
-    rec.lang = "en-US";
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.lang = "en-US"; rec.continuous = false; rec.interimResults = false;
     rec.onstart = () => setListening(true);
     rec.onend   = () => setListening(false);
-    rec.onerror = (e) => { setListening(false); };
-    rec.onresult = (e) => {
+    rec.onerror = () => setListening(false);
+    rec.onresult = e => {
       const results = e.results;
       if (results && results.length > 0 && results[0].length > 0) {
         const t = results[0][0].transcript;
@@ -195,9 +202,8 @@ function useVoice(onResult) {
       }
     };
     recRef.current = rec;
-    try { rec.start(); } catch(e) { setListening(false); }
+    try { rec.start(); } catch { setListening(false); }
   }, [listening, supported, onResult]);
-
   return { listening, toggle, supported };
 }
 
@@ -226,9 +232,8 @@ function MicButton({ items, onUpdate }) {
   if (!supported) return null;
   return (
     <>
-      <button onClick={toggle}
-        style={{ width:44, height:44, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, position:"relative" }}
-        title={listening?"Tap to stop":"Tap to speak"}>
+      <button onClick={toggle} title={listening ? "Tap to stop" : "Tap to speak"}
+        style={{ width:44, height:44, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
           <rect x="9" y="2" width="6" height="11" rx="3"/>
           <path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
@@ -239,6 +244,7 @@ function MicButton({ items, onUpdate }) {
   );
 }
 
+// ── Item card ──────────────────────────────────────────────────────────────
 function ItemCard({ item, onAdj, onEdit }) {
   const st  = invStatus(item.qty, item.min);
   const url = item.odaUrl || odaSearchUrl(item.name);
@@ -247,6 +253,7 @@ function ItemCard({ item, onAdj, onEdit }) {
   const badgeTxt = st==="Critical"?"#A32D2D":st==="Low"?"#854F0B":"#3B6D11";
   const odaBg    = st==="Critical"?"#FCEBEB":"#E6F1FB";
   const odaTxt   = st==="Critical"?"#A32D2D":"#185FA5";
+  const showOda  = st !== "OK" && (item.category === "Soda" || item.category === "Beer");
   return (
     <div style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid "+borderColor, overflow:"hidden", fontFamily:font }}>
       <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", padding:"12px 14px 8px", gap:8 }}>
@@ -261,7 +268,7 @@ function ItemCard({ item, onAdj, onEdit }) {
         <button onClick={() => onAdj(item)} style={{ background:"var(--color-background-secondary)", border:"2px solid var(--color-border-tertiary)", borderRadius:10, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--color-text-secondary)", fontFamily:font }}>±</button>
         <button onClick={() => onEdit(item)} style={{ background:"var(--color-background-secondary)", border:"2px solid var(--color-border-tertiary)", borderRadius:10, width:30, height:30, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--color-text-secondary)", fontFamily:font }}>✎</button>
       </div>
-      {st !== "OK" && (item.category === "Soda" || item.category === "Beer") && <>
+      {showOda && <>
         <div style={{ height:1, background:"var(--color-border-tertiary)" }}/>
         <a href={url} target="_blank" rel="noreferrer"
           style={{ display:"block", width:"100%", background:odaBg, color:odaTxt, border:"none", padding:"8px 0", fontSize:12, fontWeight:600, textAlign:"center", textDecoration:"none", fontFamily:font, boxSizing:"border-box" }}>
@@ -272,6 +279,7 @@ function ItemCard({ item, onAdj, onEdit }) {
   );
 }
 
+// ── Stock count ────────────────────────────────────────────────────────────
 function StockCountPage({ items, onSave, onClose }) {
   const all = [...items].sort((a,b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   const [idx, setIdx] = useState(0);
@@ -300,10 +308,9 @@ function StockCountPage({ items, onSave, onClose }) {
   }, [current, advance]);
 
   const { listening, toggle, supported } = useVoice(handleVoiceResult);
-  const skip = () => { setInput(""); if (idx < all.length - 1) setIdx(i => i + 1); else setDone(true); };
+  const skip   = () => { setInput(""); if (idx < all.length - 1) setIdx(i => i + 1); else setDone(true); };
   const finish = () => { onSave(items.map(i => counts[i.id] !== undefined ? { ...i, qty: counts[i.id] } : i)); onClose(); };
   const progress = Math.round((idx / all.length) * 100);
-  const changedCount = Object.keys(counts).length;
 
   if (done) return (
     <div style={{ fontFamily:font, minHeight:"100vh", background:"var(--color-background-tertiary)" }}>
@@ -311,7 +318,7 @@ function StockCountPage({ items, onSave, onClose }) {
       <div style={{ padding:"2rem 1.5rem", display:"flex", flexDirection:"column", gap:16 }}>
         <div style={{ background:"#EAF3DE", border:"2px solid "+MINT, borderRadius:16, padding:"1.5rem", textAlign:"center" }}>
           <p style={{ margin:"0 0 4px", fontSize:20, fontWeight:700, color:"#3B6D11", fontFamily:font }}>Count complete!</p>
-          <p style={{ margin:0, fontSize:14, color:"#3B6D11", fontFamily:font }}>{changedCount} item{changedCount!==1?"s":""} counted</p>
+          <p style={{ margin:0, fontSize:14, color:"#3B6D11", fontFamily:font }}>{Object.keys(counts).length} items counted</p>
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {all.filter(i => counts[i.id] !== undefined).map(i => (
@@ -339,10 +346,10 @@ function StockCountPage({ items, onSave, onClose }) {
         <div style={{ background:"var(--color-background-primary)", borderRadius:20, border:"2px solid "+CORAL, padding:"1.5rem", textAlign:"center" }}>
           <p style={{ margin:"0 0 4px", fontSize:22, fontWeight:700, color:"var(--color-text-primary)", fontFamily:font }}>{current.name}</p>
           <p style={{ margin:"0 0 1.25rem", fontSize:13, color:"var(--color-text-secondary)", fontFamily:font }}>Currently: {current.qty} {current.unit}</p>
-          <input type="number" min="0" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && advance()} placeholder="Enter count…"
+          <input type="number" min="0" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key==="Enter" && advance()} placeholder="Enter count…"
             style={{ width:"100%", height:56, border:"2px solid var(--color-border-secondary)", borderRadius:14, padding:"0 16px", fontSize:22, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", boxSizing:"border-box", fontFamily:font }} autoFocus/>
         </div>
-        {supported && <p style={{ margin:0, fontSize:12, color:"var(--color-text-tertiary)", textAlign:"center", fontFamily:font }}>{listening ? "🎤 Listening…" : "Hold mic and say the count"}</p>}
+        {supported && <p style={{ margin:0, fontSize:12, color:"var(--color-text-tertiary)", textAlign:"center", fontFamily:font }}>{listening ? "🎤 Listening…" : "Tap mic and say the count"}</p>}
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
           <button onClick={skip} style={{ flex:1, background:"transparent", color:"var(--color-text-secondary)", border:"2px solid var(--color-border-secondary)", borderRadius:14, padding:"12px", fontSize:14, cursor:"pointer", fontFamily:font }}>Skip</button>
           {supported && (
@@ -357,7 +364,7 @@ function StockCountPage({ items, onSave, onClose }) {
           <button onClick={() => advance()} style={{ flex:1, background:CORAL, color:"#fff", border:"none", borderRadius:14, padding:"12px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:font }}>Next →</button>
         </div>
         {idx < all.length - 1 && (
-          <div style={{ marginTop:4 }}>
+          <div>
             <p style={{ margin:"0 0 8px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.06em", fontFamily:font }}>Up next</p>
             {all.slice(idx+1, idx+3).map(i => (
               <div key={i.id} style={{ background:"var(--color-background-secondary)", borderRadius:10, padding:"8px 14px", marginBottom:6, display:"flex", justifyContent:"space-between" }}>
@@ -373,6 +380,7 @@ function StockCountPage({ items, onSave, onClose }) {
   );
 }
 
+// ── Inventory ──────────────────────────────────────────────────────────────
 function InventoryPage({ onBack, startTab }) {
   const [items, setItems] = useLocalStorage("kanit_items", INV_DEFAULT);
   const [tab, setTab]     = useState(startTab || "Soda");
@@ -381,6 +389,7 @@ function InventoryPage({ onBack, startTab }) {
   const [form, setForm]   = useState({});
   const [adjDelta, setAdjDelta] = useState("");
   const [nextId, setNextId] = useLocalStorage("kanit_next_id", 56);
+  const [stockCount, setStockCount] = useState(false);
   const [bulkEdit, setBulkEdit] = useState(false);
   const [bulkValues, setBulkValues] = useState({});
 
@@ -393,6 +402,17 @@ function InventoryPage({ onBack, startTab }) {
   const updateQty = useCallback((id, newQty) => {
     setItems(p => p.map(i => i.id === id ? { ...i, qty: newQty } : i));
   }, [setItems]);
+
+  const startBulkEdit = () => { setBulkValues({}); setBulkEdit(true); };
+  const saveBulkEdit  = () => {
+    setItems(p => p.map(i => {
+      const added = Number(bulkValues[i.id]);
+      return bulkValues[i.id] !== undefined && !isNaN(added) && bulkValues[i.id] !== ""
+        ? { ...i, qty: Math.max(0, i.qty + added) } : i;
+    }));
+    setBulkEdit(false); setBulkValues({});
+  };
+  const cancelBulkEdit = () => { setBulkEdit(false); setBulkValues({}); };
 
   const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab, qty:"", unit:"", min:"", odaUrl:"" }); setModal("add"); };
   const openEdit = item => { setForm({...item}); setModal({type:"edit", item}); };
@@ -423,12 +443,13 @@ function InventoryPage({ onBack, startTab }) {
       />
       <div style={{ display:"flex", gap:8, padding:"12px 1.5rem 0", overflowX:"auto" }}>
         {TABS.map(([k,color]) => (
-          <button key={k} onClick={() => setTab(k)}
+          <button key={k} onClick={() => { setTab(k); setBulkEdit(false); setBulkValues({}); }}
             style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:"6px 14px", whiteSpace:"nowrap", fontFamily:font }}>
             {k==="Reorder" ? "Reorder"+(reorderItems.length>0?" ("+reorderItems.length+")":"") : k}
           </button>
         ))}
       </div>
+
       {tab !== "Reorder" && !bulkEdit && (
         <div style={{ display:"flex", gap:10, padding:"0.75rem 1.5rem", alignItems:"center" }}>
           <input style={{...inp(), marginBottom:0, flex:1}} placeholder={"Search "+tab.toLowerCase()+"…"} value={search} onChange={e=>setSearch(e.target.value)}/>
@@ -450,43 +471,25 @@ function InventoryPage({ onBack, startTab }) {
           <p style={{ margin:0, fontSize:13, color:"var(--color-text-secondary)", fontFamily:font }}>{reorderItems.length} item{reorderItems.length!==1?"s":""} need restocking</p>
         </div>
       )}
+
       <div style={{ display:"flex", flexDirection:"column", gap:10, padding:"0.5rem 1.5rem 2rem" }}>
         {displayItems.length===0 && (
           <p style={{ textAlign:"center", color:"var(--color-text-tertiary)", fontSize:14, padding:"2rem 0", fontFamily:font }}>
-            {tab==="Reorder"?"All stocked up — nothing to reorder!":"No items found"}
+            {tab==="Reorder" ? "All stocked up — nothing to reorder!" : "No items found"}
           </p>
         )}
         {bulkEdit ? displayItems.map(item => (
           <div key={item.id} style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid var(--color-border-tertiary)", padding:"12px 14px", display:"flex", alignItems:"center", gap:12, fontFamily:font }}>
             <div style={{ flex:1, minWidth:0 }}>
-              <p style={{ margin:0, fontSize:14, fontWeight:600, color:"var(--color-text-primary)" }}>{item.name}</p>
-              <p style={{ margin:"2px 0 0", fontSize:11, color:"var(--color-text-tertiary)" }}>{item.unit} · min {item.min}</p>
-            </div>
-            <input
-              type="number" min="0"
-              value={bulkValues[item.id] ?? String(item.qty)}
-              onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))}
-              style={{ width:72, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}
-            />
-          </div>
-        )) : bulkEdit ? displayItems.map(item => (
-          <div key={item.id} style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid var(--color-border-tertiary)", padding:"12px 14px", display:"flex", alignItems:"center", gap:12, fontFamily:font }}>
-            <div style={{ flex:1, minWidth:0 }}>
               <p style={{ margin:0, fontSize:14, fontWeight:600, color:"var(--color-text-primary)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</p>
               <p style={{ margin:"2px 0 0", fontSize:11, color:"var(--color-text-tertiary)", fontFamily:font }}>Currently: {item.qty} {item.unit}</p>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <input
-                type="number"
-                value={bulkValues[item.id] ?? ""}
-                onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))}
-                placeholder="+/−"
-                style={{ width:80, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}
-              />
-            </div>
+            <input type="number" value={bulkValues[item.id] ?? ""} onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))} placeholder="+/−"
+              style={{ width:80, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}/>
           </div>
         )) : displayItems.map(item => <ItemCard key={item.id} item={item} onAdj={openAdj} onEdit={openEdit}/>)}
       </div>
+
       {modal && (
         <Modal onClose={close}>
           {(modal==="add"||modal.type==="edit") && <>
@@ -532,6 +535,7 @@ function InventoryPage({ onBack, startTab }) {
   );
 }
 
+// ── Vendors ────────────────────────────────────────────────────────────────
 const VCATS = ["All","Supplies","Maintenance","Cleaning","Catering","IT","Other"];
 const VCOLORS = { Supplies:["#E6F1FB","#185FA5"], Maintenance:["#FAEEDA","#854F0B"], Cleaning:["#EAF3DE","#3B6D11"], Catering:["#FBEAF0","#993556"], IT:["#EEEDFE","#3C3489"], Other:["#F1EFE8","#5F5E5A"] };
 
@@ -635,6 +639,7 @@ function VendorsPage({ onBack }) {
   );
 }
 
+// ── Home ───────────────────────────────────────────────────────────────────
 function HomePage({ onNav, items, onReset }) {
   const reorderCount  = items.filter(i=>invStatus(i.qty,i.min)!=="OK").length;
   const criticalCount = items.filter(i=>invStatus(i.qty,i.min)==="Critical").length;
@@ -696,6 +701,7 @@ function HomePage({ onNav, items, onReset }) {
   );
 }
 
+// ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("home");
   const [items] = useLocalStorage("kanit_items", INV_DEFAULT);
