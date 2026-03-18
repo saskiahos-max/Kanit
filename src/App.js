@@ -381,7 +381,8 @@ function InventoryPage({ onBack, startTab }) {
   const [form, setForm]   = useState({});
   const [adjDelta, setAdjDelta] = useState("");
   const [nextId, setNextId] = useLocalStorage("kanit_next_id", 56);
-  const [stockCount, setStockCount] = useState(false);
+  const [bulkEdit, setBulkEdit] = useState(false);
+  const [bulkValues, setBulkValues] = useState({});
 
   const reorderItems = items.filter(i => invStatus(i.qty, i.min) !== "OK");
   const displayItems = useMemo(() => {
@@ -423,16 +424,24 @@ function InventoryPage({ onBack, startTab }) {
       <div style={{ display:"flex", gap:8, padding:"12px 1.5rem 0", overflowX:"auto" }}>
         {TABS.map(([k,color]) => (
           <button key={k} onClick={() => setTab(k)}
-            style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:k==="Reorder"?"6px 14px":"6px 0", whiteSpace:"nowrap", fontFamily:font }}>
+            style={{ border:`2px solid ${tab===k?color:"var(--color-border-tertiary)"}`, borderRadius:20, fontSize:12, fontWeight:tab===k?600:400, cursor:"pointer", background:tab===k?color:"transparent", color:tab===k?"#fff":"var(--color-text-secondary)", flex:k!=="Reorder"?1:"unset", padding:"6px 14px", whiteSpace:"nowrap", fontFamily:font }}>
             {k==="Reorder" ? "Reorder"+(reorderItems.length>0?" ("+reorderItems.length+")":"") : k}
           </button>
         ))}
       </div>
-      {tab !== "Reorder" && (
+      {tab !== "Reorder" && !bulkEdit && (
         <div style={{ display:"flex", gap:10, padding:"0.75rem 1.5rem", alignItems:"center" }}>
           <input style={{...inp(), marginBottom:0, flex:1}} placeholder={"Search "+tab.toLowerCase()+"…"} value={search} onChange={e=>setSearch(e.target.value)}/>
           <MicButton items={items} onUpdate={updateQty} />
+          <button onClick={startBulkEdit} style={{ background:"var(--color-background-secondary)", color:"var(--color-text-primary)", border:"2px solid var(--color-border-secondary)", borderRadius:20, padding:"8px 14px", fontSize:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", fontFamily:font }}>Edit all</button>
           <button onClick={openAdd} style={{ background:CORAL, color:"#fff", border:"none", borderRadius:20, padding:"8px 16px", fontSize:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", fontFamily:font }}>+ Add</button>
+        </div>
+      )}
+      {tab !== "Reorder" && bulkEdit && (
+        <div style={{ display:"flex", gap:10, padding:"0.75rem 1.5rem", alignItems:"center", background:"var(--color-background-secondary)", borderBottom:"2px solid var(--color-border-tertiary)" }}>
+          <p style={{ margin:0, fontSize:13, fontWeight:600, color:"var(--color-text-primary)", fontFamily:font, flex:1 }}>+ to add, − to remove</p>
+          <button onClick={cancelBulkEdit} style={{ background:"transparent", color:"var(--color-text-secondary)", border:"2px solid var(--color-border-secondary)", borderRadius:20, padding:"8px 14px", fontSize:13, cursor:"pointer", fontFamily:font }}>Cancel</button>
+          <button onClick={saveBulkEdit} style={{ background:CORAL, color:"#fff", border:"none", borderRadius:20, padding:"8px 16px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:font }}>Save all</button>
         </div>
       )}
       {tab === "Reorder" && (
@@ -447,7 +456,36 @@ function InventoryPage({ onBack, startTab }) {
             {tab==="Reorder"?"All stocked up — nothing to reorder!":"No items found"}
           </p>
         )}
-        {displayItems.map(item => <ItemCard key={item.id} item={item} onAdj={openAdj} onEdit={openEdit}/>)}
+        {bulkEdit ? displayItems.map(item => (
+          <div key={item.id} style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid var(--color-border-tertiary)", padding:"12px 14px", display:"flex", alignItems:"center", gap:12, fontFamily:font }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ margin:0, fontSize:14, fontWeight:600, color:"var(--color-text-primary)" }}>{item.name}</p>
+              <p style={{ margin:"2px 0 0", fontSize:11, color:"var(--color-text-tertiary)" }}>{item.unit} · min {item.min}</p>
+            </div>
+            <input
+              type="number" min="0"
+              value={bulkValues[item.id] ?? String(item.qty)}
+              onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))}
+              style={{ width:72, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}
+            />
+          </div>
+        )) : bulkEdit ? displayItems.map(item => (
+          <div key={item.id} style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid var(--color-border-tertiary)", padding:"12px 14px", display:"flex", alignItems:"center", gap:12, fontFamily:font }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ margin:0, fontSize:14, fontWeight:600, color:"var(--color-text-primary)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</p>
+              <p style={{ margin:"2px 0 0", fontSize:11, color:"var(--color-text-tertiary)", fontFamily:font }}>Currently: {item.qty} {item.unit}</p>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <input
+                type="number"
+                value={bulkValues[item.id] ?? ""}
+                onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))}
+                placeholder="+/−"
+                style={{ width:80, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}
+              />
+            </div>
+          </div>
+        )) : displayItems.map(item => <ItemCard key={item.id} item={item} onAdj={openAdj} onEdit={openEdit}/>)}
       </div>
       {modal && (
         <Modal onClose={close}>
