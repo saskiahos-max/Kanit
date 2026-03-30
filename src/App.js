@@ -1,5 +1,27 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 
+const SUPABASE_URL = "https://gdftiqalfkwgngtttguh.supabase.co";
+const SUPABASE_KEY = "sb_publishable_bYQaFG87_bzvfpZ_ZldKsQ_-A7YmZNP";
+
+async function sb(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": options.prefer || "return=representation",
+      ...options.headers,
+    },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 const CORAL  = "#D85A30";
 const AMBER  = "#EF9F27";
 const MINT   = "#5DCAA5";
@@ -7,37 +29,6 @@ const RED    = "#E24B4A";
 const PURPLE = "#7F77DD";
 const font   = "'Poppins', sans-serif";
 
-// ── Smart localStorage with migration ─────────────────────────────────────
-// Merges saved data with defaults: new items get added, existing quantities kept
-function mergeWithDefaults(saved, defaults) {
-  if (!Array.isArray(saved)) return defaults;
-  const savedMap = {};
-  saved.forEach(i => { savedMap[i.id] = i; });
-  return defaults.map(def => {
-    const s = savedMap[def.id];
-    if (!s) return def; // new item not in saved data — use default
-    return { ...def, qty: s.qty, unit: s.unit ?? def.unit }; // keep saved qty, use latest defaults for everything else
-  });
-}
-
-function useLocalStorage(key, def) {
-  const [val, setVal] = useState(() => {
-    try {
-      const v = localStorage.getItem(key);
-      if (!v) return def;
-      const parsed = JSON.parse(v);
-      if (key === "kanit_items" && Array.isArray(parsed)) {
-        const migrated = parsed.map(i => ({ ...i, category: i.category === "Drinks" ? "Soda" : i.category }));
-        return mergeWithDefaults(migrated, def);
-      }
-      return parsed;
-    } catch { return def; }
-  });
-  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
-  return [val, setVal];
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 function invStatus(qty, min) {
   if (qty <= 0) return "Critical";
   if (qty <= min) return "Low";
@@ -75,63 +66,62 @@ function parseVoiceCommand(transcript, items) {
   return { item: bestItem, op, delta, num };
 }
 
-// ── Data ───────────────────────────────────────────────────────────────────
 const INV_DEFAULT = [
-  { id:1,  name:"Coca Cola",                             category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64771-coca-cola-coca-cola-original-taste-4-x-033l/" },
-  { id:2,  name:"Coca Cola Zero",                        category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64772-coca-cola-coca-cola-zero-sugar-4-x-033l/" },
-  { id:3,  name:"Sprite",                                category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64774-sprite-sprite-zero-sugar-4-x-033l/" },
-  { id:4,  name:"Pepsi",                                 category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/41014-pepsi-pepsi-max-brett-20-x-033l/" },
-  { id:5,  name:"Solo",                                  category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"" },
-  { id:6,  name:"Frus Eple & Kiwi",                      category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/64850-farris-farris-frus-eple-kiwi-6x033l/" },
-  { id:7,  name:"Frus Mandarin & Mango",                 category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/66542-farris-frus-mandarin-mango-6x033-l/" },
-  { id:8,  name:"Fruktsmekke Rabarbra",                  category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/64170-safteriet-fruktsmekk-rabarbra-og-hylleblomstbrus/" },
-  { id:9,  name:"Fruktsmekk Plomme & Ingefærbrus",       category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/64169-safteriet-fruktsmekk-plomme-og-ingefaerbrus/" },
-  { id:10, name:"Tundra Ingefærøl",                      category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/64326-noisom-tundra-ingefaerol/" },
-  { id:11, name:"Sparkling Limonade Eple & Hylleblomst", category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/65281-kolonihagen-sparkling-limonade-eple-hylleblomst/" },
-  { id:12, name:"Sparkling Ingefær",                     category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/32810-kolonihagen-sparkling-ingefaer-okologisk/" },
-  { id:13, name:"Sparkling Bringebær & Grapefrukt",      category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/61910-kolonihagen-sparkling-bringebaer-og-grapefruit/" },
-  { id:14, name:"Sparkling Appelsin & Sitron",           category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/36556-kolonihagen-sparkling-appelsin-sitron-okologisk/" },
-  { id:15, name:"Loka Jordbær & Granateple",             category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/66785-loka-loka-jordbaer-granateple-20-x-033l/" },
-  { id:16, name:"Loka Sitron",                           category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/65335-loka-loka-sitron-20-x-033l/" },
-  { id:17, name:"Mozell Light",                          category:"Soda",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64834-ringnes-mozell-light-10-x-033l/" },
-  { id:18, name:"Rubicon Sparkling Mango",               category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/63231-rubicon-sparkling-mango/" },
-  { id:19, name:"Villbrygg Flyt",                        category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/59787-villbrygg-villbrygg-flyt/" },
-  { id:20, name:"Villbrygg Glimt",                       category:"Soda",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/59788-villbrygg-villbrygg-glimt/" },
-  { id:21, name:"Carlsberg Pilsener",                    category:"Beer",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/12550-carlsberg-pilsner-boks-10x033l/" },
-  { id:22, name:"Aass Pilsener",                         category:"Beer",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64684-aass-bryggeri-aass-pilsner-fridgepack-10-x-033l/" },
-  { id:23, name:"Hansa Pilsener",                        category:"Beer",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/31921-hansa-hansa-pilsner-fridgepack-10-x-033l/" },
-  { id:24, name:"Heineken",                              category:"Beer",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/22108-hansa-heineken-fridgepack-10-x-033l/" },
-  { id:25, name:"Tuborg Grøn",                           category:"Beer",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/19984-tuborg-gron-12-x-033l/" },
-  { id:26, name:"Frydenlund Fatøl",                      category:"Beer",       qty:0, unit:"cans",    min:10, odaUrl:"https://oda.com/no/products/64685-aass-bryggeri-aass-fatol-fridgepack-10-x-033l/" },
-  { id:27, name:"Ringnes Lite Glutenfri",                category:"Beer",       qty:0, unit:"cans",    min:6,  odaUrl:"https://oda.com/no/products/8026-ringnes-lite-glutenfri-6-x-05l/" },
-  { id:28, name:"Kronenbourg 1664 Blanc",                category:"Beer",       qty:0, unit:"bottles", min:6,  odaUrl:"https://oda.com/no/products/22495-kronenbourg-kronenbourg-1664-blanc-6x033l/" },
-  { id:29, name:"Coffee beans Pals Nordic Light 1kg",    category:"Hot drinks", qty:0, unit:"box of 6",min:2,  odaUrl:"" },
-  { id:30, name:"Espresso beans Meglio Espresso 1kg",    category:"Hot drinks", qty:0, unit:"box of 6",min:2,  odaUrl:"" },
-  { id:31, name:"Baristea English Blend 25pos",          category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:32, name:"Baristea Earl Grey 25pos",              category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:33, name:"Baristea Forest Fruit 25pos",           category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:34, name:"Baristea Chai 25pos",                   category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:35, name:"Baristea Vanilla 25pos",                category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:36, name:"Baristea Green Tea 25pos",              category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:37, name:"Baristea Green Tea Lemon 25pos",        category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:38, name:"Baristea Jasmin 25pos",                 category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:39, name:"Baristea White Tea Raspberry 25pos",    category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:40, name:"Baristea Rooibos 25pos (koffeinfri)",   category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:41, name:"Baristea Mint 25pos (koffeinfri)",      category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:42, name:"Baristea Ginger Lemon 25pos (koffeinfri)", category:"Hot drinks", qty:0, unit:"box",  min:4,  odaUrl:"" },
-  { id:43, name:"Baristea Camomile 25pos (koffeinfri)",  category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:44, name:"Baristea Fruit Infusion 25pos",         category:"Hot drinks", qty:0, unit:"box",     min:4,  odaUrl:"" },
-  { id:45, name:"Scandinavian Taste Chocomix 10x1kg",    category:"Hot drinks", qty:0, unit:"box",     min:1,  odaUrl:"" },
-  { id:46, name:"Melitta Multi TF Rensetabletter 150stk",category:"Hot drinks", qty:0, unit:"box",     min:1,  odaUrl:"" },
-  { id:47, name:"Melitta AMC Milk System Cleaner 50x50g",category:"Hot drinks", qty:0, unit:"box",     min:1,  odaUrl:"" },
-  { id:48, name:"Melitta Kurvfilter Pa SF 202S 100stk",  category:"Hot drinks", qty:0, unit:"box",     min:1,  odaUrl:"" },
-  { id:49, name:"CO2 Engangsflaske 6x600g",              category:"Hot drinks", qty:0, unit:"box",     min:1,  odaUrl:"" },
-  { id:50, name:"Jura Rensetabletter 25x3,5g",           category:"Hot drinks", qty:0, unit:"box",     min:1,  odaUrl:"" },
-  { id:51, name:"Sirup Chai 1L",                         category:"Hot drinks", qty:0, unit:"bottle",  min:1,  odaUrl:"" },
-  { id:52, name:"Sirup Hasselnøtt 1L",                   category:"Hot drinks", qty:0, unit:"bottle",  min:1,  odaUrl:"" },
-  { id:53, name:"Sirup Karamell 1L",                     category:"Hot drinks", qty:0, unit:"bottle",  min:1,  odaUrl:"" },
-  { id:54, name:"Sirup Mango Iste 1L",                   category:"Hot drinks", qty:0, unit:"bottle",  min:1,  odaUrl:"" },
-  { id:55, name:"Royal Mix Saltet Nøtteblanding 2,5kg",  category:"Hot drinks", qty:0, unit:"box",     min:2,  odaUrl:"" },
+  { id:1,  name:"Coca Cola",                             category:"Soda",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/64771-coca-cola-coca-cola-original-taste-4-x-033l/" },
+  { id:2,  name:"Coca Cola Zero",                        category:"Soda",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/64772-coca-cola-coca-cola-zero-sugar-4-x-033l/" },
+  { id:3,  name:"Sprite",                                category:"Soda",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/64774-sprite-sprite-zero-sugar-4-x-033l/" },
+  { id:4,  name:"Pepsi",                                 category:"Soda",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/41014-pepsi-pepsi-max-brett-20-x-033l/" },
+  { id:5,  name:"Solo",                                  category:"Soda",       qty:0, unit:"cans",    min:10, oda_url:"" },
+  { id:6,  name:"Frus Eple & Kiwi",                      category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/64850-farris-farris-frus-eple-kiwi-6x033l/" },
+  { id:7,  name:"Frus Mandarin & Mango",                 category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/66542-farris-frus-mandarin-mango-6x033-l/" },
+  { id:8,  name:"Fruktsmekke Rabarbra",                  category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/64170-safteriet-fruktsmekk-rabarbra-og-hylleblomstbrus/" },
+  { id:9,  name:"Fruktsmekk Plomme & Ingefærbrus",       category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/64169-safteriet-fruktsmekk-plomme-og-ingefaerbrus/" },
+  { id:10, name:"Tundra Ingefærøl",                      category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/64326-noisom-tundra-ingefaerol/" },
+  { id:11, name:"Sparkling Limonade Eple & Hylleblomst", category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/65281-kolonihagen-sparkling-limonade-eple-hylleblomst/" },
+  { id:12, name:"Sparkling Ingefær",                     category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/32810-kolonihagen-sparkling-ingefaer-okologisk/" },
+  { id:13, name:"Sparkling Bringebær & Grapefrukt",      category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/61910-kolonihagen-sparkling-bringebaer-og-grapefruit/" },
+  { id:14, name:"Sparkling Appelsin & Sitron",           category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/36556-kolonihagen-sparkling-appelsin-sitron-okologisk/" },
+  { id:15, name:"Loka Jordbær & Granateple",             category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/66785-loka-loka-jordbaer-granateple-20-x-033l/" },
+  { id:16, name:"Loka Sitron",                           category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/65335-loka-loka-sitron-20-x-033l/" },
+  { id:17, name:"Mozell Light",                          category:"Soda",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/64834-ringnes-mozell-light-10-x-033l/" },
+  { id:18, name:"Rubicon Sparkling Mango",               category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/63231-rubicon-sparkling-mango/" },
+  { id:19, name:"Villbrygg Flyt",                        category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/59787-villbrygg-villbrygg-flyt/" },
+  { id:20, name:"Villbrygg Glimt",                       category:"Soda",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/59788-villbrygg-villbrygg-glimt/" },
+  { id:21, name:"Carlsberg Pilsener",                    category:"Beer",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/12550-carlsberg-pilsner-boks-10x033l/" },
+  { id:22, name:"Aass Pilsener",                         category:"Beer",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/64684-aass-bryggeri-aass-pilsner-fridgepack-10-x-033l/" },
+  { id:23, name:"Hansa Pilsener",                        category:"Beer",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/31921-hansa-hansa-pilsner-fridgepack-10-x-033l/" },
+  { id:24, name:"Heineken",                              category:"Beer",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/22108-hansa-heineken-fridgepack-10-x-033l/" },
+  { id:25, name:"Tuborg Grøn",                           category:"Beer",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/19984-tuborg-gron-12-x-033l/" },
+  { id:26, name:"Frydenlund Fatøl",                      category:"Beer",       qty:0, unit:"cans",    min:10, oda_url:"https://oda.com/no/products/64685-aass-bryggeri-aass-fatol-fridgepack-10-x-033l/" },
+  { id:27, name:"Ringnes Lite Glutenfri",                category:"Beer",       qty:0, unit:"cans",    min:6,  oda_url:"https://oda.com/no/products/8026-ringnes-lite-glutenfri-6-x-05l/" },
+  { id:28, name:"Kronenbourg 1664 Blanc",                category:"Beer",       qty:0, unit:"bottles", min:6,  oda_url:"https://oda.com/no/products/22495-kronenbourg-kronenbourg-1664-blanc-6x033l/" },
+  { id:29, name:"Coffee beans Pals Nordic Light 1kg",    category:"Hot drinks", qty:0, unit:"box of 6",min:2,  oda_url:"" },
+  { id:30, name:"Espresso beans Meglio Espresso 1kg",    category:"Hot drinks", qty:0, unit:"box of 6",min:2,  oda_url:"" },
+  { id:31, name:"Baristea English Blend 25pos",          category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:32, name:"Baristea Earl Grey 25pos",              category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:33, name:"Baristea Forest Fruit 25pos",           category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:34, name:"Baristea Chai 25pos",                   category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:35, name:"Baristea Vanilla 25pos",                category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:36, name:"Baristea Green Tea 25pos",              category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:37, name:"Baristea Green Tea Lemon 25pos",        category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:38, name:"Baristea Jasmin 25pos",                 category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:39, name:"Baristea White Tea Raspberry 25pos",    category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:40, name:"Baristea Rooibos 25pos (koffeinfri)",   category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:41, name:"Baristea Mint 25pos (koffeinfri)",      category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:42, name:"Baristea Ginger Lemon 25pos (koffeinfri)", category:"Hot drinks", qty:0, unit:"box",  min:4,  oda_url:"" },
+  { id:43, name:"Baristea Camomile 25pos (koffeinfri)",  category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:44, name:"Baristea Fruit Infusion 25pos",         category:"Hot drinks", qty:0, unit:"box",     min:4,  oda_url:"" },
+  { id:45, name:"Scandinavian Taste Chocomix 10x1kg",    category:"Hot drinks", qty:0, unit:"box",     min:1,  oda_url:"" },
+  { id:46, name:"Melitta Multi TF Rensetabletter 150stk",category:"Hot drinks", qty:0, unit:"box",     min:1,  oda_url:"" },
+  { id:47, name:"Melitta AMC Milk System Cleaner 50x50g",category:"Hot drinks", qty:0, unit:"box",     min:1,  oda_url:"" },
+  { id:48, name:"Melitta Kurvfilter Pa SF 202S 100stk",  category:"Hot drinks", qty:0, unit:"box",     min:1,  oda_url:"" },
+  { id:49, name:"CO2 Engangsflaske 6x600g",              category:"Hot drinks", qty:0, unit:"box",     min:1,  oda_url:"" },
+  { id:50, name:"Jura Rensetabletter 25x3,5g",           category:"Hot drinks", qty:0, unit:"box",     min:1,  oda_url:"" },
+  { id:51, name:"Sirup Chai 1L",                         category:"Hot drinks", qty:0, unit:"bottle",  min:1,  oda_url:"" },
+  { id:52, name:"Sirup Hasselnøtt 1L",                   category:"Hot drinks", qty:0, unit:"bottle",  min:1,  oda_url:"" },
+  { id:53, name:"Sirup Karamell 1L",                     category:"Hot drinks", qty:0, unit:"bottle",  min:1,  oda_url:"" },
+  { id:54, name:"Sirup Mango Iste 1L",                   category:"Hot drinks", qty:0, unit:"bottle",  min:1,  oda_url:"" },
+  { id:55, name:"Royal Mix Saltet Nøtteblanding 2,5kg",  category:"Hot drinks", qty:0, unit:"box",     min:2,  oda_url:"" },
 ];
 
 const VENDOR_DEFAULT = [
@@ -179,6 +169,16 @@ function TopBar({ title, onBack, right }) {
 
 function inp() { return { height:40, border:"2px solid var(--color-border-secondary)", borderRadius:12, padding:"0 12px", fontSize:14, background:"var(--color-background-primary)", color:"var(--color-text-primary)", boxSizing:"border-box", marginBottom:14, width:"100%", fontFamily:font }; }
 function pbtn(primary) { return { border:`2px solid ${primary?"transparent":"var(--color-border-secondary)"}`, borderRadius:12, padding:"8px 18px", fontSize:14, cursor:"pointer", background:primary?CORAL:"transparent", color:primary?"#fff":"var(--color-text-primary)", fontWeight:primary?600:400, fontFamily:font }; }
+
+function Spinner() {
+  return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"3rem", flexDirection:"column", gap:12 }}>
+      <div style={{ width:32, height:32, border:`3px solid var(--color-border-tertiary)`, borderTopColor:CORAL, borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
+      <p style={{ margin:0, fontSize:13, color:"var(--color-text-secondary)", fontFamily:font }}>Loading…</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
 
 // ── Voice ──────────────────────────────────────────────────────────────────
 function useVoice(onResult) {
@@ -247,7 +247,7 @@ function MicButton({ items, onUpdate }) {
 // ── Item card ──────────────────────────────────────────────────────────────
 function ItemCard({ item, onAdj, onEdit }) {
   const st  = invStatus(item.qty, item.min);
-  const url = item.odaUrl || odaSearchUrl(item.name);
+  const url = item.oda_url || odaSearchUrl(item.name);
   const borderColor = st==="Critical"?"#F09595":st==="Low"?"#FAC775":"var(--color-border-tertiary)";
   const badgeBg  = st==="Critical"?"#FCEBEB":st==="Low"?"#FAEEDA":"#EAF3DE";
   const badgeTxt = st==="Critical"?"#A32D2D":st==="Low"?"#854F0B":"#3B6D11";
@@ -287,6 +287,7 @@ function StockCountPage({ items, onSave, onClose }) {
   const [input, setInput] = useState("");
   const [done, setDone] = useState(false);
   const [toast, setToast] = useState(null);
+  const [saving, setSaving] = useState(false);
   const current = all[idx];
 
   const advance = useCallback((overrideVal) => {
@@ -308,8 +309,16 @@ function StockCountPage({ items, onSave, onClose }) {
   }, [current, advance]);
 
   const { listening, toggle, supported } = useVoice(handleVoiceResult);
-  const skip   = () => { setInput(""); if (idx < all.length - 1) setIdx(i => i + 1); else setDone(true); };
-  const finish = () => { onSave(items.map(i => counts[i.id] !== undefined ? { ...i, qty: counts[i.id] } : i)); onClose(); };
+  const skip = () => { setInput(""); if (idx < all.length - 1) setIdx(i => i + 1); else setDone(true); };
+
+  const finish = async () => {
+    setSaving(true);
+    const updates = items.map(i => counts[i.id] !== undefined ? { ...i, qty: counts[i.id] } : i);
+    await onSave(updates);
+    setSaving(false);
+    onClose();
+  };
+
   const progress = Math.round((idx / all.length) * 100);
 
   if (done) return (
@@ -328,7 +337,9 @@ function StockCountPage({ items, onSave, onClose }) {
             </div>
           ))}
         </div>
-        <button onClick={finish} style={{ background:CORAL, color:"#fff", border:"none", borderRadius:14, padding:"14px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:font }}>Save all changes</button>
+        <button onClick={finish} disabled={saving} style={{ background:CORAL, color:"#fff", border:"none", borderRadius:14, padding:"14px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:font, opacity:saving?0.7:1 }}>
+          {saving ? "Saving…" : "Save all changes"}
+        </button>
         <button onClick={onClose} style={{ background:"transparent", color:"var(--color-text-secondary)", border:"2px solid var(--color-border-secondary)", borderRadius:14, padding:"12px", fontSize:14, cursor:"pointer", fontFamily:font }}>Discard &amp; exit</button>
       </div>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
@@ -353,8 +364,7 @@ function StockCountPage({ items, onSave, onClose }) {
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
           <button onClick={skip} style={{ flex:1, background:"transparent", color:"var(--color-text-secondary)", border:"2px solid var(--color-border-secondary)", borderRadius:14, padding:"12px", fontSize:14, cursor:"pointer", fontFamily:font }}>Skip</button>
           {supported && (
-            <button onClick={toggle}
-              style={{ width:52, height:52, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <button onClick={toggle} style={{ width:52, height:52, borderRadius:"50%", border:`2px solid ${listening?RED:CORAL}`, background:listening?RED:CORAL, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
                 <rect x="9" y="2" width="6" height="11" rx="3"/>
                 <path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/>
@@ -382,16 +392,43 @@ function StockCountPage({ items, onSave, onClose }) {
 
 // ── Inventory ──────────────────────────────────────────────────────────────
 function InventoryPage({ onBack, startTab }) {
-  const [items, setItems] = useLocalStorage("kanit_items", INV_DEFAULT);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab]     = useState(startTab || "Soda");
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [form, setForm]   = useState({});
   const [adjDelta, setAdjDelta] = useState("");
-  const [nextId, setNextId] = useLocalStorage("kanit_next_id", 56);
   const [stockCount, setStockCount] = useState(false);
   const [bulkEdit, setBulkEdit] = useState(false);
   const [bulkValues, setBulkValues] = useState({});
+  const [toast, setToast] = useState(null);
+
+  // Load from Supabase
+  useEffect(() => {
+    sb("items?order=id").then(data => {
+      if (data && data.length > 0) {
+        setItems(data);
+      } else {
+        // First time — seed with defaults
+        sb("items", {
+          method: "POST",
+          prefer: "return=representation",
+          body: JSON.stringify(INV_DEFAULT),
+        }).then(seeded => { if (seeded) setItems(seeded); });
+      }
+    }).catch(() => setItems(INV_DEFAULT))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const updateItemInDb = useCallback(async (id, qty) => {
+    await sb(`items?id=eq.${id}`, { method:"PATCH", prefer:"return=minimal", body: JSON.stringify({ qty }) });
+  }, []);
+
+  const updateQty = useCallback((id, newQty) => {
+    setItems(p => p.map(i => i.id === id ? { ...i, qty: newQty } : i));
+    updateItemInDb(id, newQty);
+  }, [updateItemInDb]);
 
   const reorderItems = items.filter(i => invStatus(i.qty, i.min) !== "OK");
   const displayItems = useMemo(() => {
@@ -399,42 +436,69 @@ function InventoryPage({ onBack, startTab }) {
     return items.filter(i => i.category === tab && i.name.toLowerCase().includes(search.toLowerCase()));
   }, [items, tab, search]);
 
-  const updateQty = useCallback((id, newQty) => {
-    setItems(p => p.map(i => i.id === id ? { ...i, qty: newQty } : i));
-  }, [setItems]);
-
   const startBulkEdit = () => { setBulkValues({}); setBulkEdit(true); };
-  const saveBulkEdit  = () => {
-    setItems(p => p.map(i => {
+  const saveBulkEdit  = async () => {
+    const updates = [];
+    const newItems = items.map(i => {
       const added = Number(bulkValues[i.id]);
-      return bulkValues[i.id] !== undefined && !isNaN(added) && bulkValues[i.id] !== ""
-        ? { ...i, qty: Math.max(0, i.qty + added) } : i;
-    }));
+      if (bulkValues[i.id] !== undefined && !isNaN(added) && bulkValues[i.id] !== "") {
+        const newQty = Math.max(0, i.qty + added);
+        updates.push(updateItemInDb(i.id, newQty));
+        return { ...i, qty: newQty };
+      }
+      return i;
+    });
+    setItems(newItems);
+    await Promise.all(updates);
     setBulkEdit(false); setBulkValues({});
   };
   const cancelBulkEdit = () => { setBulkEdit(false); setBulkValues({}); };
 
-  const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab, qty:"", unit:"", min:"", odaUrl:"" }); setModal("add"); };
-  const openEdit = item => { setForm({...item}); setModal({type:"edit", item}); };
+  const openAdd  = () => { setForm({ name:"", category:tab==="Reorder"?"Soda":tab, qty:"", unit:"", min:"", oda_url:"" }); setModal("add"); };
+  const openEdit = item => { setForm({...item, oda_url: item.oda_url||""}); setModal({type:"edit", item}); };
   const openAdj  = item => { setAdjDelta(""); setModal({type:"adj", item}); };
   const close    = () => setModal(null);
 
-  const save = () => {
+  const save = async () => {
     if (!form.name||form.qty===""||!form.unit||form.min==="") return;
-    const entry = {...form, qty:Number(form.qty), min:Number(form.min), odaUrl:form.odaUrl||""};
-    if (modal==="add") { setItems(p=>[...p,{id:nextId,...entry}]); setNextId(n=>n+1); }
-    else setItems(p=>p.map(i=>i.id===modal.item.id?{...i,...entry}:i));
+    const entry = { name:form.name, category:form.category, qty:Number(form.qty), unit:form.unit, min:Number(form.min), oda_url:form.oda_url||"" };
+    if (modal==="add") {
+      const maxId = items.reduce((m,i) => Math.max(m,i.id), 0);
+      const newItem = { id: maxId+1, ...entry };
+      const res = await sb("items", { method:"POST", body: JSON.stringify(newItem) });
+      if (res) setItems(p => [...p, res[0]||newItem]);
+    } else {
+      await sb(`items?id=eq.${modal.item.id}`, { method:"PATCH", prefer:"return=minimal", body: JSON.stringify(entry) });
+      setItems(p => p.map(i => i.id===modal.item.id ? {...i,...entry} : i));
+    }
     close();
   };
-  const applyAdj = () => {
+
+  const applyAdj = async () => {
     const d=Number(adjDelta); if(isNaN(d)||adjDelta==="") return;
-    setItems(p=>p.map(i=>i.id===modal.item.id?{...i,qty:Math.max(0,i.qty+d)}:i)); close();
+    const newQty = Math.max(0, modal.item.qty + d);
+    await updateItemInDb(modal.item.id, newQty);
+    setItems(p=>p.map(i=>i.id===modal.item.id?{...i,qty:newQty}:i));
+    close();
   };
-  const del = id => { setItems(p=>p.filter(i=>i.id!==id)); close(); };
+
+  const del = async id => {
+    await sb(`items?id=eq.${id}`, { method:"DELETE", prefer:"return=minimal" });
+    setItems(p=>p.filter(i=>i.id!==id));
+    close();
+  };
+
+  const saveForStockCount = async (updatedItems) => {
+    const updates = updatedItems
+      .filter((item, idx) => item.qty !== items[idx]?.qty)
+      .map(item => updateItemInDb(item.id, item.qty));
+    setItems(updatedItems);
+    await Promise.all(updates);
+  };
 
   const TABS = [["Soda",CORAL],["Beer",AMBER],["Snacks",MINT],["Hot drinks",PURPLE],["Reorder",RED]];
 
-  if (stockCount) return <StockCountPage items={items} onSave={setItems} onClose={() => setStockCount(false)} />;
+  if (stockCount) return <StockCountPage items={items} onSave={saveForStockCount} onClose={() => setStockCount(false)} />;
 
   return (
     <div style={{ fontFamily:font, minHeight:"100vh", background:"var(--color-background-tertiary)" }}>
@@ -472,23 +536,27 @@ function InventoryPage({ onBack, startTab }) {
         </div>
       )}
 
-      <div style={{ display:"flex", flexDirection:"column", gap:10, padding:"0.5rem 1.5rem 2rem" }}>
-        {displayItems.length===0 && (
-          <p style={{ textAlign:"center", color:"var(--color-text-tertiary)", fontSize:14, padding:"2rem 0", fontFamily:font }}>
-            {tab==="Reorder" ? "All stocked up — nothing to reorder!" : "No items found"}
-          </p>
-        )}
-        {bulkEdit ? displayItems.map(item => (
-          <div key={item.id} style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid var(--color-border-tertiary)", padding:"12px 14px", display:"flex", alignItems:"center", gap:12, fontFamily:font }}>
-            <div style={{ flex:1, minWidth:0 }}>
-              <p style={{ margin:0, fontSize:14, fontWeight:600, color:"var(--color-text-primary)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</p>
-              <p style={{ margin:"2px 0 0", fontSize:11, color:"var(--color-text-tertiary)", fontFamily:font }}>Currently: {item.qty} {item.unit}</p>
+      {loading ? <Spinner /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:10, padding:"0.5rem 1.5rem 2rem" }}>
+          {displayItems.length===0 && (
+            <p style={{ textAlign:"center", color:"var(--color-text-tertiary)", fontSize:14, padding:"2rem 0", fontFamily:font }}>
+              {tab==="Reorder" ? "All stocked up — nothing to reorder!" : "No items found"}
+            </p>
+          )}
+          {bulkEdit ? displayItems.map(item => (
+            <div key={item.id} style={{ background:"var(--color-background-primary)", borderRadius:14, border:"2px solid var(--color-border-tertiary)", padding:"12px 14px", display:"flex", alignItems:"center", gap:12, fontFamily:font }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <p style={{ margin:0, fontSize:14, fontWeight:600, color:"var(--color-text-primary)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.name}</p>
+                <p style={{ margin:"2px 0 0", fontSize:11, color:"var(--color-text-tertiary)", fontFamily:font }}>Currently: {item.qty} {item.unit}</p>
+              </div>
+              <input type="number" value={bulkValues[item.id] ?? ""} onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))} placeholder="+/−"
+                style={{ width:80, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}/>
             </div>
-            <input type="number" value={bulkValues[item.id] ?? ""} onChange={e => setBulkValues(v => ({ ...v, [item.id]: e.target.value }))} placeholder="+/−"
-              style={{ width:80, height:38, border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"0 10px", fontSize:15, fontWeight:600, textAlign:"center", background:"var(--color-background-secondary)", color:"var(--color-text-primary)", fontFamily:font }}/>
-          </div>
-        )) : displayItems.map(item => <ItemCard key={item.id} item={item} onAdj={openAdj} onEdit={openEdit}/>)}
-      </div>
+          )) : displayItems.map(item => <ItemCard key={item.id} item={item} onAdj={openAdj} onEdit={openEdit}/>)}
+        </div>
+      )}
+
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
 
       {modal && (
         <Modal onClose={close}>
@@ -508,7 +576,7 @@ function InventoryPage({ onBack, startTab }) {
             <label style={{ display:"block", fontSize:12, color:"var(--color-text-secondary)", marginBottom:4, fontFamily:font }}>Reorder threshold</label>
             <input style={inp()} type="number" min="0" value={form.min} onChange={e=>setForm(p=>({...p,min:e.target.value}))} placeholder="e.g. 10"/>
             <label style={{ display:"block", fontSize:12, color:"var(--color-text-secondary)", marginBottom:4, fontFamily:font }}>Oda URL (optional)</label>
-            <input style={inp()} value={form.odaUrl||""} onChange={e=>setForm(p=>({...p,odaUrl:e.target.value}))} placeholder="https://oda.com/no/products/…"/>
+            <input style={inp()} value={form.oda_url||""} onChange={e=>setForm(p=>({...p,oda_url:e.target.value}))} placeholder="https://oda.com/no/products/…"/>
             <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:4 }}>
               {modal.type==="edit"&&<button onClick={()=>del(modal.item.id)} style={{ border:"none", background:"none", color:RED, fontSize:13, cursor:"pointer", marginRight:"auto", fontFamily:font }}>Delete</button>}
               <button style={pbtn(false)} onClick={close}>Cancel</button>
@@ -540,13 +608,25 @@ const VCATS = ["All","Supplies","Maintenance","Cleaning","Catering","IT","Other"
 const VCOLORS = { Supplies:["#E6F1FB","#185FA5"], Maintenance:["#FAEEDA","#854F0B"], Cleaning:["#EAF3DE","#3B6D11"], Catering:["#FBEAF0","#993556"], IT:["#EEEDFE","#3C3489"], Other:["#F1EFE8","#5F5E5A"] };
 
 function VendorsPage({ onBack }) {
-  const [vendors, setVendors] = useLocalStorage("kanit_vendors", VENDOR_DEFAULT);
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState("All");
   const [search, setSearch]   = useState("");
   const [modal, setModal]     = useState(null);
   const [form, setForm]       = useState({ name:"", category:"Supplies", contact:"", phone:"", email:"", notes:"" });
-  const [nextId, setNextId]   = useLocalStorage("kanit_vendor_next_id", 4);
   const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    sb("vendors?order=id").then(data => {
+      if (data && data.length > 0) {
+        setVendors(data);
+      } else {
+        sb("vendors", { method:"POST", body: JSON.stringify(VENDOR_DEFAULT) })
+          .then(seeded => { if (seeded) setVendors(seeded); });
+      }
+    }).catch(() => setVendors(VENDOR_DEFAULT))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = useMemo(() => vendors.filter(v =>
     (filter==="All"||v.category===filter) &&
@@ -556,13 +636,27 @@ function VendorsPage({ onBack }) {
   const openAdd  = () => { setForm({ name:"", category:"Supplies", contact:"", phone:"", email:"", notes:"" }); setModal("add"); };
   const openEdit = v  => { setForm({...v}); setModal({type:"edit",vendor:v}); };
   const close    = () => setModal(null);
-  const save = () => {
+
+  const save = async () => {
     if (!form.name.trim()) return;
-    if (modal==="add") { setVendors(p=>[...p,{id:nextId,...form}]); setNextId(n=>n+1); }
-    else setVendors(p=>p.map(v=>v.id===modal.vendor.id?{...v,...form}:v));
+    const entry = { name:form.name, category:form.category, contact:form.contact, phone:form.phone, email:form.email, notes:form.notes };
+    if (modal==="add") {
+      const maxId = vendors.reduce((m,v) => Math.max(m,v.id), 0);
+      const newV = { id: maxId+1, ...entry };
+      const res = await sb("vendors", { method:"POST", body: JSON.stringify(newV) });
+      if (res) setVendors(p => [...p, res[0]||newV]);
+    } else {
+      await sb(`vendors?id=eq.${modal.vendor.id}`, { method:"PATCH", prefer:"return=minimal", body: JSON.stringify(entry) });
+      setVendors(p => p.map(v => v.id===modal.vendor.id ? {...v,...entry} : v));
+    }
     close();
   };
-  const del = id => { setVendors(p=>p.filter(v=>v.id!==id)); close(); };
+
+  const del = async id => {
+    await sb(`vendors?id=eq.${id}`, { method:"DELETE", prefer:"return=minimal" });
+    setVendors(p=>p.filter(v=>v.id!==id));
+    close();
+  };
 
   return (
     <div style={{ fontFamily:font, minHeight:"100vh", background:"var(--color-background-tertiary)" }}>
@@ -576,40 +670,42 @@ function VendorsPage({ onBack }) {
           <button key={c} onClick={()=>setFilter(c)} style={{ border:`2px solid ${filter===c?CORAL:"var(--color-border-tertiary)"}`, borderRadius:20, padding:"4px 12px", fontSize:12, cursor:"pointer", background:filter===c?CORAL:"transparent", color:filter===c?"#fff":"var(--color-text-secondary)", fontFamily:font }}>{c}</button>
         ))}
       </div>
-      <div style={{ display:"flex", flexDirection:"column", gap:10, padding:"0 1.5rem 2rem" }}>
-        {filtered.length===0&&<p style={{ textAlign:"center", color:"var(--color-text-tertiary)", fontSize:14, padding:"2rem 0", fontFamily:font }}>No vendors found</p>}
-        {filtered.map(v=>{
-          const [bg,tc]=VCOLORS[v.category]||VCOLORS.Other;
-          const open=expanded===v.id;
-          return (
-            <div key={v.id} style={{ background:"var(--color-background-primary)", borderRadius:16, border:"2px solid var(--color-border-tertiary)", overflow:"hidden" }}>
-              <div onClick={()=>setExpanded(open?null:v.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", cursor:"pointer" }}>
-                <div style={{ width:42, height:42, borderRadius:12, background:bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <span style={{ fontSize:13, fontWeight:600, color:tc, fontFamily:font }}>{v.name.slice(0,2).toUpperCase()}</span>
+      {loading ? <Spinner /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:10, padding:"0 1.5rem 2rem" }}>
+          {filtered.length===0&&<p style={{ textAlign:"center", color:"var(--color-text-tertiary)", fontSize:14, padding:"2rem 0", fontFamily:font }}>No vendors found</p>}
+          {filtered.map(v=>{
+            const [bg,tc]=VCOLORS[v.category]||VCOLORS.Other;
+            const open=expanded===v.id;
+            return (
+              <div key={v.id} style={{ background:"var(--color-background-primary)", borderRadius:16, border:"2px solid var(--color-border-tertiary)", overflow:"hidden" }}>
+                <div onClick={()=>setExpanded(open?null:v.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", cursor:"pointer" }}>
+                  <div style={{ width:42, height:42, borderRadius:12, background:bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <span style={{ fontSize:13, fontWeight:600, color:tc, fontFamily:font }}>{v.name.slice(0,2).toUpperCase()}</span>
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ margin:0, fontWeight:600, fontSize:14, color:"var(--color-text-primary)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", fontFamily:font }}>{v.name}</p>
+                    <p style={{ margin:0, fontSize:12, color:"var(--color-text-secondary)", fontFamily:font }}>{v.contact||"No contact set"}</p>
+                  </div>
+                  <span style={{ background:bg, color:tc, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600, fontFamily:font }}>{v.category}</span>
+                  <span style={{ color:"var(--color-text-tertiary)", fontSize:12, marginLeft:4 }}>{open?"▲":"▼"}</span>
                 </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <p style={{ margin:0, fontWeight:600, fontSize:14, color:"var(--color-text-primary)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", fontFamily:font }}>{v.name}</p>
-                  <p style={{ margin:0, fontSize:12, color:"var(--color-text-secondary)", fontFamily:font }}>{v.contact||"No contact set"}</p>
-                </div>
-                <span style={{ background:bg, color:tc, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600, fontFamily:font }}>{v.category}</span>
-                <span style={{ color:"var(--color-text-tertiary)", fontSize:12, marginLeft:4 }}>{open?"▲":"▼"}</span>
+                {open&&(
+                  <div style={{ borderTop:"2px solid var(--color-border-tertiary)", padding:"12px 16px", background:"var(--color-background-secondary)" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 16px" }}>
+                      {v.phone&&<div><p style={{ margin:"0 0 2px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.04em", fontFamily:font }}>Phone</p><a href={"tel:"+v.phone} style={{ fontSize:13, color:"#185FA5", textDecoration:"none", fontFamily:font }}>{v.phone}</a></div>}
+                      {v.email&&<div><p style={{ margin:"0 0 2px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.04em", fontFamily:font }}>Email</p><a href={"mailto:"+v.email} style={{ fontSize:13, color:"#185FA5", textDecoration:"none", fontFamily:font }}>{v.email}</a></div>}
+                    </div>
+                    {v.notes&&<div style={{marginTop:10}}><p style={{ margin:"0 0 4px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.04em", fontFamily:font }}>Notes</p><p style={{ margin:0, fontSize:13, color:"var(--color-text-secondary)", lineHeight:1.5, fontFamily:font }}>{v.notes}</p></div>}
+                    <div style={{ display:"flex", justifyContent:"flex-end", marginTop:12 }}>
+                      <button style={pbtn(false)} onClick={()=>openEdit(v)}>Edit</button>
+                    </div>
+                  </div>
+                )}
               </div>
-              {open&&(
-                <div style={{ borderTop:"2px solid var(--color-border-tertiary)", padding:"12px 16px", background:"var(--color-background-secondary)" }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 16px" }}>
-                    {v.phone&&<div><p style={{ margin:"0 0 2px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.04em", fontFamily:font }}>Phone</p><a href={"tel:"+v.phone} style={{ fontSize:13, color:"#185FA5", textDecoration:"none", fontFamily:font }}>{v.phone}</a></div>}
-                    {v.email&&<div><p style={{ margin:"0 0 2px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.04em", fontFamily:font }}>Email</p><a href={"mailto:"+v.email} style={{ fontSize:13, color:"#185FA5", textDecoration:"none", fontFamily:font }}>{v.email}</a></div>}
-                  </div>
-                  {v.notes&&<div style={{marginTop:10}}><p style={{ margin:"0 0 4px", fontSize:11, color:"var(--color-text-tertiary)", textTransform:"uppercase", letterSpacing:"0.04em", fontFamily:font }}>Notes</p><p style={{ margin:0, fontSize:13, color:"var(--color-text-secondary)", lineHeight:1.5, fontFamily:font }}>{v.notes}</p></div>}
-                  <div style={{ display:"flex", justifyContent:"flex-end", marginTop:12 }}>
-                    <button style={pbtn(false)} onClick={()=>openEdit(v)}>Edit</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
       {modal&&(
         <Modal onClose={close}>
           <p style={{ fontSize:17, fontWeight:600, margin:"0 0 1.25rem", fontFamily:font }}>{modal==="add"?"Add vendor":"Edit vendor"}</p>
@@ -640,10 +736,9 @@ function VendorsPage({ onBack }) {
 }
 
 // ── Home ───────────────────────────────────────────────────────────────────
-function HomePage({ onNav, items, onReset }) {
+function HomePage({ onNav, items, loading }) {
   const reorderCount  = items.filter(i=>invStatus(i.qty,i.min)!=="OK").length;
   const criticalCount = items.filter(i=>invStatus(i.qty,i.min)==="Critical").length;
-  const [showReset, setShowReset] = useState(false);
   return (
     <div style={{ fontFamily:font, minHeight:"100vh", background:"var(--color-background-tertiary)", padding:"2rem 1.5rem", display:"flex", flexDirection:"column", gap:20 }}>
       <div style={{ display:"flex", alignItems:"center", gap:14 }}>
@@ -663,7 +758,11 @@ function HomePage({ onNav, items, onReset }) {
         </button>
       </div>
       <div style={{ flex:1 }}/>
-      {reorderCount === 0 ? (
+      {loading ? (
+        <div style={{ background:"var(--color-background-secondary)", borderRadius:20, padding:"1.5rem", textAlign:"center" }}>
+          <p style={{ margin:0, fontSize:14, color:"var(--color-text-secondary)", fontFamily:font }}>Checking stock levels…</p>
+        </div>
+      ) : reorderCount === 0 ? (
         <div style={{ background:"#EAF3DE", border:"2px solid "+MINT, borderRadius:20, padding:"1.5rem" }}>
           <p style={{ margin:"0 0 2px", fontSize:16, fontWeight:700, color:"#3B6D11", fontFamily:font }}>All stocked up!</p>
           <p style={{ margin:0, fontSize:13, color:"#3B6D11", opacity:0.8, fontFamily:font }}>Nothing to reorder right now.</p>
@@ -685,18 +784,6 @@ function HomePage({ onNav, items, onReset }) {
           <button onClick={()=>onNav("reorder")} style={{ background:RED, color:"#fff", border:"none", borderRadius:12, padding:"8px 16px", fontSize:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", fontFamily:font }}>Reorder →</button>
         </div>
       )}
-      <div style={{ textAlign:"center" }}>
-        <button onClick={()=>setShowReset(v=>!v)} style={{ background:"none", border:"none", fontSize:11, color:"var(--color-text-tertiary)", cursor:"pointer", fontFamily:font }}>···</button>
-        {showReset && (
-          <div style={{ marginTop:8, background:"var(--color-background-secondary)", borderRadius:12, padding:"1rem", border:"2px solid var(--color-border-tertiary)" }}>
-            <p style={{ margin:"0 0 10px", fontSize:12, color:"var(--color-text-secondary)", fontFamily:font }}>Reset item list to latest defaults? Your quantities will be lost.</p>
-            <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
-              <button onClick={()=>setShowReset(false)} style={{ border:"2px solid var(--color-border-secondary)", borderRadius:10, padding:"6px 14px", fontSize:12, cursor:"pointer", background:"transparent", fontFamily:font }}>Cancel</button>
-              <button onClick={onReset} style={{ border:"none", borderRadius:10, padding:"6px 14px", fontSize:12, cursor:"pointer", background:RED, color:"#fff", fontWeight:600, fontFamily:font }}>Reset items</button>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -704,18 +791,20 @@ function HomePage({ onNav, items, onReset }) {
 // ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("home");
-  const [items] = useLocalStorage("kanit_items", INV_DEFAULT);
+  const [homeItems, setHomeItems] = useState([]);
+  const [homeLoading, setHomeLoading] = useState(true);
 
-  const handleReset = () => {
-    localStorage.removeItem('kanit_items');
-    localStorage.removeItem('kanit_next_id');
-    window.location.reload();
-  };
+  useEffect(() => {
+    sb("items?order=id")
+      .then(data => { if (data) setHomeItems(data); })
+      .catch(() => {})
+      .finally(() => setHomeLoading(false));
+  }, [page]); // refresh when navigating back to home
 
   const handleNav = p => setPage(p==="reorder"?"inventory-reorder":p);
   if (page==="inventory"||page==="inventory-reorder")
     return <InventoryPage onBack={()=>setPage("home")} startTab={page==="inventory-reorder"?"Reorder":"Soda"}/>;
   if (page==="vendors")
     return <VendorsPage onBack={()=>setPage("home")}/>;
-  return <HomePage onNav={handleNav} items={items} onReset={handleReset}/>;
+  return <HomePage onNav={handleNav} items={homeItems} loading={homeLoading}/>;
 }
